@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#C75B2A">
+<meta name="description" content="把想做的菜收好，按份数换算食材，一键生成购物清单。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="食谱盒子">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<title>食谱盒子 · 做菜随手查</title>
+</head>
+<body>
+<div id="app">
+  <header class="topbar" id="topbar"></header>
+  <main class="view" id="view"></main>
+  <button class="fab" id="fab" type="button" data-act="add" aria-label="新增食谱">+</button>
+  <nav class="tabbar" id="tabbar">
+    <button type="button" data-act="tab" data-tab="recipes"><span class="ti">▤</span><span>食谱</span></button>
+    <button type="button" data-act="tab" data-tab="record"><span class="ti">▦</span><span>记录</span></button>
+    <button type="button" data-act="tab" data-tab="list"><span class="ti">☷</span><span>清单</span></button>
+    <button type="button" data-act="tab" data-tab="me"><span class="ti">○</span><span>我的</span></button>
+  </nav>
+</div>
+<div class="sheet" id="sheet" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="imageFile" accept="image/*" multiple hidden>
+<div class="lightbox" id="lightbox" aria-hidden="true"></div>
+<script src="app.js"></script>
+</body>
+</html>
