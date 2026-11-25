@@ -447,3 +447,50 @@ textarea.field.mono{min-height:92px;resize:vertical;line-height:1.5}
 .share-photo{width:100%;border-radius:10px;margin-top:8px;display:block}
 .share-actions{margin:22px 0 10px}
 .share-actions .btn{width:100%;margin-top:10px}
+/* ============ v15 营养：详情亮点 + 每周覆盖 ============ */
+.note-count{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+.nutri-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:4px}
+.nutri-chip{display:flex;align-items:center;gap:7px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 10px}
+.nutri-ico{font-size:17px;line-height:1;flex:0 0 19px;text-align:center}
+.nutri-name{font-size:13px;font-weight:600;flex:0 0 auto;color:var(--text)}
+.nutri-src{font-size:11px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nutri-week{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin:12px 0 10px}
+.nutri-week>button[data-v="-1"],.nutri-week>button[data-v="1"]{flex:0 0 36px;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--text);font-size:20px;line-height:1}
+.nw-label{flex:1;text-align:center;min-width:120px}
+.nw-label b{display:block;font-size:14px}
+.nw-label small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.nw-today{flex:0 0 auto;height:32px;padding:0 10px;font-size:12px;color:var(--brand);background:var(--brand-soft);border-radius:9px}
+.nutri-sum{font-size:12px;color:var(--muted);margin:0 2px 10px}
+.nutri-list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.nutri-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);opacity:.6}
+.nutri-row:last-child{border-bottom:0}
+.nutri-row.on{opacity:1}
+.nr-ico{font-size:20px;line-height:1;flex:0 0 22px;text-align:center}
+.nr-main{flex:1;min-width:0}
+.nr-main b{display:block;font-size:13px;font-weight:600;color:var(--text)}
+.nr-main span{display:block;font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;word-break:break-word}
+.nr-state{flex:0 0 auto;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap}
+.nutri-row.on .nr-state{color:var(--ok)}
+/* ============ v16 营养知识卡 ============ */
+.kb-chips{margin-bottom:12px}
+.kb-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 16px 14px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kb-card:before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--brand),var(--ok))}
+.kb-head{text-align:center;padding:4px 0 12px;border-bottom:1px dashed var(--line)}
+.kb-title{font-size:40px;font-weight:800;letter-spacing:2px;color:var(--brand);line-height:1.15}
+.kb-sub{font-size:13px;color:var(--muted);margin-top:6px}
+.kb-note{font-size:12.5px;color:var(--text);line-height:1.7;margin:14px 2px 18px}
+.kb-bars{display:flex;flex-direction:column;gap:7px}
+.kb-row{display:flex;align-items:center;gap:8px;min-height:26px}
+.kb-name{flex:0 0 98px;display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden}
+.kb-emoji{font-size:18px;line-height:1;flex:0 0 auto}
+.kb-track{flex:1;min-width:0;height:22px;background:var(--surface2);border-radius:6px;overflow:hidden}
+.kb-bar{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--brand),#E39A6B);transition:width .25s ease}
+.kb-val{flex:0 0 62px;text-align:right;font-size:15px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kb-val small{font-size:10px;font-weight:600;color:var(--muted);margin-left:2px}
+.kb-foot{font-size:12px;color:var(--muted);margin-top:16px;padding-top:12px;border-top:1px dashed var(--line)}
+.kb-foot b{color:var(--text);font-weight:600}
+.kb-src{font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px}
+.kb-hint{margin-top:12px}
+/* 五个 tab 时收紧文字，避免拥挤 */
+.tabbar button{font-size:9px}
+.tabbar button .ti{font-size:17px}
