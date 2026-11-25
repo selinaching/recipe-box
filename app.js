@@ -181,6 +181,122 @@ function splitIngs(r){
   });
   return {main:main, se:se};
 }
+
+/* ============ 营养标签知识库（v15，定性、不含任何数值） ============
+   依据小红书「高营养食材」笔记的 6 类营养素，只做「有 / 无」的定性判断。
+   keys 用于食材名包含匹配（已含常见别名）；不记录、不显示任何含量数值。 */
+var NUTRIENT_GROUPS = [
+  { key:'fiber', label:'膳食纤维', emoji:'🌾', tip:'燕麦、红薯、玉米、菌菇',
+    keys:['燕麦','奇亚籽','红薯','地瓜','紫薯','玉米','苹果','梨','全麦','糙米','黑米','杂粮','藜麦','荞麦',
+          '黄豆','黑豆','红豆','绿豆','毛豆','豌豆','西兰花','西蓝花','花椰菜','菜花','胡萝卜','南瓜',
+          '香菇','口蘑','蘑菇','金针菇','木耳','秋葵','芹菜','海带','魔芋','牛油果','火龙果','蓝莓'] },
+  { key:'vitd', label:'维生素D', emoji:'☀️', tip:'鸡蛋黄、三文鱼、香菇',
+    keys:['鸡蛋','蛋黄','三文鱼','鲑鱼','沙丁鱼','秋刀鱼','鲭鱼','金枪鱼','香菇','干香菇','带鱼','鲈鱼','鳕鱼','巴沙鱼','鱼肝油'] },
+  { key:'vitc', label:'维生素C', emoji:'🍊', tip:'彩椒、猕猴桃、草莓、番茄',
+    keys:['橙','橘','柑橘','柚子','草莓','猕猴桃','奇异果','彩椒','甜椒','红椒','青椒','柿子椒','鲜枣','冬枣',
+          '红枣','番茄','西红柿','西兰花','西蓝花','柠檬','生菜','油菜','芥蓝','苦瓜','小白菜','娃娃菜'] },
+  { key:'calcium', label:'钙', emoji:'🦴', tip:'牛奶、豆腐、芝麻酱、深绿叶菜',
+    keys:['牛奶','酸奶','奶酪','芝士','乳酪','豆腐','豆干','豆皮','豆浆','虾皮','芝麻酱','黑芝麻','芝麻',
+          '西蓝花','西兰花','小油菜','油菜','芥蓝','荠菜','苋菜','小鱼干','紫菜','海带'] },
+  { key:'protein', label:'蛋白质', emoji:'💪', tip:'鸡蛋、鸡胸肉、鱼虾、豆腐',
+    keys:['鸡蛋','蛋白','蛋黄','鸡胸','鸡腿','鸡翅','鸡肉','牛肉','牛里脊','牛腩','猪里脊','排骨','瘦肉',
+          '虾','鱼','三文鱼','豆腐','豆干','豆浆','牛奶','酸奶','芝士','奶酪'] },
+  { key:'iron', label:'铁', emoji:'🩸', tip:'菠菜、猪肝、黑木耳、牛肉',
+    keys:['菠菜','猪肝','鸭血','鸡血','猪血','动物肝','黑木耳','木耳','黄豆','黑豆','牛肉','牛里脊',
+          '猪里脊','瘦肉','蛤蜊','花蛤','贝类','芝麻酱','黑芝麻','红豆','樱桃','桂圆'] }
+];
+function normFood(s){ return String(s==null?'':s).replace(/\s+/g,'').toLowerCase(); }
+/* 食材名 -> 命中的营养标签 { key:[食材名,...] }。默认只传主料，调味料量小不计入。 */
+function ingredientsNutrients(ings){
+  var hits = {};
+  (ings||[]).forEach(function(x){
+    var raw = (x && typeof x==='object') ? (x.n||x.name) : x;
+    var n = normFood(raw);
+    if(!n) return;
+    NUTRIENT_GROUPS.forEach(function(g){
+      for(var i=0;i<g.keys.length;i++){
+        if(n.indexOf(g.keys[i])>-1){
+          if(!hits[g.key]) hits[g.key]=[];
+          if(hits[g.key].indexOf(raw)<0) hits[g.key].push(raw);
+          break;
+        }
+      }
+    });
+  });
+  return hits;
+}
+function mainIngredients(r){ return splitIngs(r||{}).main.map(function(o){ return o.x; }); }
+/* 场景1：一道菜的营养亮点标签 */
+function recipeNutritionTags(r){
+  var hits = ingredientsNutrients(mainIngredients(r));
+  return NUTRIENT_GROUPS.filter(function(g){ return (hits[g.key]||[]).length; })
+    .map(function(g){ return {key:g.key,label:g.label,emoji:g.emoji,foods:hits[g.key]}; });
+}
+
+/* ============ v17 营养知识库（每100g含量，带数值，每类 11-12 项） ============
+   权威来源：
+   - 蛋白质 / 钙：用户提供的两张图 + 《中国食物成分表》（第6版）补充（央视一套科普、百度健康医学科普）。
+   - 维生素C：《中国食物成分表标准版》（第6版）/《中国营养科学全书》（第2版），南方医院营养科整理。
+   - 膳食纤维：百度健康医学科普（浙江省肿瘤医院专家审阅）。
+   - 铁：百度健康医学科普（北京大学人民医院专家审阅）。
+   - 维生素D：百度健康医学科普 + 复禾健康（IU÷40 换算为 µg）。
+   每项 food: {n:名称, e:emoji, v:每100g含量}。数值用于科普对比，不作为摄入建议。 */
+var NUTRIENT_KB = [
+  { key:'protein', label:'蛋白质', unit:'g', sub:'每100g食物含量 · 常见高蛋白食物',
+    note:'肌肉、皮肤和免疫力的基础。鱼虾肉蛋奶豆都是优质来源；动植物搭配吃，氨基酸更互补。',
+    src:'用户营养图 + 《中国食物成分表》第6版',
+    foods:[
+      {n:'纯牛奶', e:'🥛', v:3}, {n:'豆腐', e:'⬜', v:8}, {n:'燕麦', e:'🌾', v:10},
+      {n:'鸡蛋', e:'🥚', v:13}, {n:'鸭肉(去皮)', e:'🦆', v:15.5}, {n:'豆腐干', e:'⬜', v:16},
+      {n:'虾仁', e:'🍤', v:19}, {n:'牛肉', e:'🥩', v:20}, {n:'猪里脊', e:'🥓', v:20.2},
+      {n:'鸡胸肉', e:'🍗', v:24}, {n:'黄豆(干)', e:'🫘', v:35}, {n:'黑豆(干)', e:'🫘', v:36}
+    ]},
+  { key:'calcium', label:'钙', unit:'mg', sub:'每100g食物含量 · 常见高钙食物',
+    note:'骨骼牙齿的主要成分。奶类、豆制品和绿叶菜是日常主力；虾皮芝麻酱含量高但盐/油也多，别靠它们猛补。',
+    src:'用户营养图 + 《中国食物成分表》第6版（央视一套科普）',
+    foods:[
+      {n:'豆浆', e:'🥤', v:5}, {n:'西蓝花', e:'🥦', v:47}, {n:'牛奶', e:'🥛', v:120},
+      {n:'豆腐', e:'⬜', v:138}, {n:'油菜薹', e:'🥬', v:156}, {n:'紫菜', e:'🌿', v:264},
+      {n:'荠菜', e:'🌿', v:294}, {n:'海带(干)', e:'🌊', v:348}, {n:'芝麻', e:'🌰', v:780},
+      {n:'奶酪', e:'🧀', v:799}, {n:'虾皮', e:'🦐', v:991}, {n:'芝麻酱', e:'🥜', v:1057}
+    ]},
+  { key:'vitc', label:'维生素C', unit:'mg', sub:'每100g食物含量 · 常见果蔬',
+    note:'帮助抗氧化、促进铁吸收。新鲜果蔬是主力，怕久煮，能生吃的别煮太久。',
+    src:'《中国食物成分表》第6版 /《中国营养科学全书》第2版（南方医院营养科整理）',
+    foods:[
+      {n:'苹果', e:'🍎', v:4}, {n:'番茄', e:'🍅', v:14}, {n:'柠檬', e:'🍋', v:22},
+      {n:'柚子', e:'🍊', v:23}, {n:'橙子', e:'🍊', v:33}, {n:'木瓜', e:'🍈', v:43},
+      {n:'草莓', e:'🍓', v:47}, {n:'西蓝花', e:'🥦', v:51}, {n:'苦瓜', e:'🥒', v:56},
+      {n:'猕猴桃', e:'🥝', v:62}, {n:'彩椒', e:'🫑', v:128}, {n:'鲜枣', e:'🌰', v:243}
+    ]},
+  { key:'fiber', label:'膳食纤维', unit:'g', sub:'每100g食物含量 · 全谷物豆类蔬果',
+    note:'促进肠道蠕动、增加饱腹感。全谷物、豆类和蔬果里较多；突然加太多会胀气，记得多喝水。',
+    src:'百度健康医学科普（浙江省肿瘤医院专家审阅）',
+    foods:[
+      {n:'米饭', e:'🍚', v:0.3}, {n:'番茄', e:'🍅', v:1.2}, {n:'土豆(带皮)', e:'🥔', v:2.2},
+      {n:'苹果', e:'🍎', v:2.4}, {n:'西蓝花', e:'🥦', v:3.0}, {n:'红薯(带皮)', e:'🍠', v:3.0},
+      {n:'毛豆', e:'🫛', v:4.5}, {n:'豌豆', e:'🫛', v:5.0}, {n:'牛油果', e:'🥑', v:6.7},
+      {n:'燕麦', e:'🌾', v:10.6}, {n:'杏仁', e:'🌰', v:12.5}, {n:'奇亚籽', e:'🌱', v:34.4}
+    ]},
+  { key:'iron', label:'铁', unit:'mg', sub:'每100g食物含量 · 常见高铁食物',
+    note:'造血必需。红肉、动物血和肝脏里的血红素铁更好吸收；植物铁可搭配维C提升吸收率。',
+    src:'百度健康医学科普（北京大学人民医院专家审阅）',
+    foods:[
+      {n:'牛肉', e:'🥩', v:2.6}, {n:'菠菜', e:'🥬', v:2.9}, {n:'羊肉', e:'🍖', v:3.1},
+      {n:'苋菜', e:'🥬', v:5.4}, {n:'扁豆', e:'🫘', v:6.2}, {n:'牡蛎', e:'🦪', v:6.8},
+      {n:'黄豆', e:'🫘', v:8.2}, {n:'南瓜籽', e:'🎃', v:8.8}, {n:'芝麻', e:'🌰', v:14.6},
+      {n:'猪肝', e:'🫀', v:22.6}, {n:'蛤蜊', e:'🐚', v:28}, {n:'黑木耳(干)', e:'🍄', v:97.4}
+    ]},
+  { key:'vitd', label:'维生素D', unit:'µg', sub:'每100g食物含量 · 天然食物较少',
+    note:'帮助钙吸收，晒太阳也能合成。天然食物里含量普遍不高，多脂鱼和菌菇相对突出（数值由 IU 换算）。',
+    src:'百度健康医学科普 + 复禾健康（IU÷40 换算）',
+    foods:[
+      {n:'牛奶', e:'🥛', v:0.1}, {n:'虾', e:'🦐', v:0.5}, {n:'猪肝', e:'🫀', v:1.25},
+      {n:'鸡蛋', e:'🥚', v:2.0}, {n:'牡蛎', e:'🦪', v:2.0}, {n:'沙丁鱼', e:'🐠', v:5.0},
+      {n:'鲭鱼', e:'🐟', v:6.0}, {n:'金枪鱼', e:'🐟', v:7.0}, {n:'干香菇', e:'🍄', v:8.7},
+      {n:'三文鱼', e:'🍣', v:13.2}, {n:'日晒香菇', e:'🍄', v:20}
+    ]}
+];
 function scaleForIng(ing, ratio, f){
   if(ing.q===null||ing.q===undefined||ing.q==='') return null;
   var k = ingType(ing)==='se' ? (0.9 + 0.1*f) : f;
@@ -369,7 +485,8 @@ ui = { tab:'recipes', q:'', food:'全部', sub:'全部', method:'全部', onlyFa
        calMonth:todayKey().slice(0,7), calDay:todayKey(), listMode:'merged',
        catTab:'food', imp:null, lb:null, cookHist:false,
        recSub:'cal', placeQ:'', placeStatus:'all', placeTag:'全部', placeSort:'score',
-       placeForm:null, placeDetail:null, pcfgTab:'tag', placeRandom:{}, share:null };
+       placeForm:null, placeDetail:null, pcfgTab:'tag', placeRandom:{}, share:null,
+       nutriWeek:todayKey(), kbKey:'protein' };
 cloud = loadCloud();
 state = load();
 migrate();
@@ -393,9 +510,10 @@ function topbarHTML(){
     if(ui.recSub==='places'){
       h1='好吃餐厅'; sub='共 '+state.places.length+' 家 · 按评分和标签挑';
     }else{
-      var days = Object.keys(state.log).filter(function(k){ var d=state.log[k]; return d && ((d.recipes||[]).length || (d.notes||[]).length); }).length;
-      h1='饮食记录'; sub='按月记下吃了什么 · 已有 '+days+' 天记录';
+      h1='饮食记录'; sub='';
     }
+  }else if(ui.tab==='knowledge'){
+    h1='营养知识'; sub='常见营养素的每100g含量速查';
   }else{
     h1='我的'; sub='份量标准与数据备份';
   }
@@ -470,7 +588,7 @@ function recipesHTML(){
     '</div>'+
     '<div class="imp-tip">每周「食谱选题雷达」生成的 <code>菜谱候选/日期.json</code>，点「批量导入」整段贴进来，一次收好。</div>';
   html += '<input class="search" id="search" type="search" placeholder="搜菜名、食材或分类" value="'+esc(ui.q)+'" autocomplete="off">';
-  html += '<div class="filter-block"><div class="filter-label">按食材 <span>· 先选大类，再选细分</span></div>'+
+  html += '<div class="filter-block"><div class="filter-label">按食材</div>'+
           '<div class="chips compact">'+chipRow(f1, ui.food, 'food1', 'data-v')+'</div>';
   if(f2.length>1){
     html += '<div class="chips compact sub">'+f2.map(function(vv){
@@ -575,9 +693,7 @@ function listHTML(){
     return add + mode + '<div class="empty"><div class="big">🧺</div><h3>清单是空的</h3><p>在食谱详情点「加入购物清单」，<br>或在「记录」里选菜，食材会自动进来。</p>'+
       '<button type="button" data-act="tab" data-tab="recipes">去挑一道菜</button></div>';
   }
-  var hint = ui.listMode==='merged'
-    ? '<div class="hint tight" style="margin-bottom:10px">同名食材已合并成一条，右侧是总量；点一行可整组勾选或删除。</div>'
-    : '<div class="hint tight" style="margin-bottom:10px">按菜谱分开列出，方便对照每道菜；切到「按食材合并」可看总量。</div>';
+  var hint = '';
   var body = ui.listMode==='merged' ? mergedViewHTML() : byRecipeHTML();
   var total, left;
   if(ui.listMode==='merged'){
@@ -659,9 +775,109 @@ function dayDetailHTML(){
 function recordHTML(){
   var seg = '<div class="rec-sub">'+
     '<button type="button" data-act="rec-sub" data-v="cal" class="'+(ui.recSub==='cal'?'on':'')+'">饮食日历</button>'+
+    '<button type="button" data-act="rec-sub" data-v="nutrition" class="'+(ui.recSub==='nutrition'?'on':'')+'">营养覆盖</button>'+
     '<button type="button" data-act="rec-sub" data-v="places" class="'+(ui.recSub==='places'?'on':'')+'">好吃餐厅 <b>'+state.places.length+'</b></button>'+
   '</div>';
-  return seg + (ui.recSub==='places' ? placesHTML() : calendarHTML() + dayDetailHTML());
+  return seg + (ui.recSub==='places' ? placesHTML() : ui.recSub==='nutrition' ? nutritionHTML() : calendarHTML() + dayDetailHTML());
+}
+/* ================= 场景3：每周营养覆盖（v15） ================= */
+function weekKeys(anchor){
+  var a = anchor || todayKey();
+  var d = new Date(Number(a.slice(0,4)), Number(a.slice(5,7))-1, Number(a.slice(8,10)));
+  var wd = d.getDay(), diff = (wd===0 ? -6 : 1-wd); /* 以周一为一周起点 */
+  var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff);
+  var arr = [];
+  for(var i=0;i<7;i++){
+    var x = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+i);
+    arr.push(dateKey(x));
+  }
+  return arr;
+}
+function shiftWeek(anchor, delta){
+  var a = anchor || todayKey();
+  var d = new Date(Number(a.slice(0,4)), Number(a.slice(5,7))-1, Number(a.slice(8,10)) + delta*7);
+  return dateKey(d);
+}
+function weeklyCoverage(){
+  var keys = weekKeys(ui.nutriWeek);
+  var hits = {}, loggedDays = 0, dishCount = 0;
+  keys.forEach(function(k){
+    var day = state.log[k];
+    if(day && ((day.recipes||[]).length || (day.notes||[]).length)) loggedDays++;
+    ((day && day.recipes) || []).forEach(function(it){
+      dishCount++;
+      var r = recipeById(it.recipeId);
+      if(!r) return; /* 菜谱已删除的条目不计入 */
+      var h = ingredientsNutrients(mainIngredients(r));
+      Object.keys(h).forEach(function(key){ hits[key] = (hits[key]||[]).concat(h[key]); });
+    });
+  });
+  Object.keys(hits).forEach(function(key){
+    hits[key] = hits[key].filter(function(v,i,a){ return a.indexOf(v)===i; });
+  });
+  return { keys:keys, hits:hits, loggedDays:loggedDays, dishCount:dishCount };
+}
+function nutritionHTML(){
+  var cov = weeklyCoverage();
+  var first = cov.keys[0], last = cov.keys[6];
+  var isThis = first === weekKeys(todayKey())[0];
+  var head = '<div class="nutri-week">'+
+    '<button type="button" data-act="nutri-week" data-v="-1" aria-label="上一周">‹</button>'+
+    '<div class="nw-label"><b>'+fmtDay(first)+' — '+fmtDay(last)+'</b>'+
+      '<small>'+(isThis ? '本周' : (cov.loggedDays+' 天有记录 · '+cov.dishCount+' 道菜'))+'</small></div>'+
+    '<button type="button" data-act="nutri-week" data-v="1" aria-label="下一周">›</button>'+
+    (isThis ? '' : '<button type="button" class="nw-today" data-act="nutri-week" data-v="0">回到本周</button>')+
+  '</div>';
+  var covered = NUTRIENT_GROUPS.filter(function(g){ return (cov.hits[g.key]||[]).length; }).length;
+  var stats = '<div class="nutri-sum">这一周记录了 '+cov.dishCount+' 道菜 · 覆盖 '+covered+' / '+NUTRIENT_GROUPS.length+' 类营养</div>';
+  var tip = '<div class="hint">统计口径：只按「饮食日历」里这一周选过的菜谱主料做定性判断，不计算摄入量，也不代表营养是否充足；随手记不计入。</div>';
+  if(!cov.dishCount){
+    return head + '<div class="empty slim"><div class="big">🥗</div><p>这一周还没有记录菜谱<br>去「饮食日历」选几道菜，就能看到营养覆盖</p>'+
+      '<button type="button" data-act="rec-sub" data-v="cal">去饮食日历</button></div>' + tip;
+  }
+  var rows = NUTRIENT_GROUPS.map(function(g){
+    var got = cov.hits[g.key]||[];
+    return '<div class="nutri-row '+(got.length?'on':'')+'">'+
+      '<div class="nr-ico">'+g.emoji+'</div>'+
+      '<div class="nr-main"><b>'+g.label+'</b>'+
+        '<span>'+(got.length ? '来自 '+esc(got.slice(0,5).join('、')) : '本周没吃到 · 可试试 '+esc(g.tip))+'</span></div>'+
+      '<div class="nr-state">'+(got.length?'✓ 已覆盖':'— 未覆盖')+'</div>'+
+    '</div>';
+  }).join('');
+  return head + stats + '<div class="nutri-list">'+rows+'</div>' + tip;
+}
+
+/* ================= v16 营养知识页 ================= */
+function kbCurrent(){
+  var k = ui.kbKey;
+  for(var i=0;i<NUTRIENT_KB.length;i++) if(NUTRIENT_KB[i].key===k) return NUTRIENT_KB[i];
+  return NUTRIENT_KB[0];
+}
+function knowledgeHTML(){
+  var cur = kbCurrent();
+  var chips = NUTRIENT_KB.map(function(g){
+    return '<button type="button" class="chip '+(g.key===cur.key?'on':'')+'" data-act="kb-tab" data-v="'+g.key+'">'+esc(g.label)+'</button>';
+  }).join('');
+  var max = 0;
+  cur.foods.forEach(function(f){ if(f.v>max) max=f.v; });
+  var rows = cur.foods.map(function(f){
+    var pct = max ? Math.max(7, Math.round(f.v/max*100)) : 0; /* 给最小值一个可见宽度 */
+    return '<div class="kb-row">'+
+      '<div class="kb-name"><span class="kb-emoji">'+f.e+'</span><span>'+esc(f.n)+'</span></div>'+
+      '<div class="kb-track"><div class="kb-bar" style="width:'+pct+'%"></div></div>'+
+      '<div class="kb-val">'+esc(fmt(f.v))+'<small>'+esc(cur.unit)+'</small></div>'+
+    '</div>';
+  }).join('');
+  var first = cur.foods.slice().sort(function(a,b){ return a.v-b.v; })[0];
+  var last = cur.foods.slice().sort(function(a,b){ return b.v-a.v; })[0];
+  return '<div class="chips kb-chips">'+chips+'</div>'+
+    '<div class="kb-card">'+
+      '<div class="kb-head"><div class="kb-title">'+esc(cur.label)+'</div>'+
+      '<div class="kb-sub">'+esc(cur.sub)+'</div></div>'+
+      '<div class="kb-note">'+esc(cur.note)+'</div>'+
+      '<div class="kb-bars">'+rows+'</div>'+
+      '<div class="kb-foot">最高 <b>'+esc(last.n)+' '+esc(fmt(last.v))+esc(cur.unit)+'</b> · 最低 <b>'+esc(first.n)+' '+esc(fmt(first.v))+esc(cur.unit)+'</b></div>'+
+    '</div>';
 }
 /* ================= 好吃餐厅（v12） ================= */
 function placeCfg(){
@@ -2018,7 +2234,8 @@ function render(){
   var v = document.getElementById('view');
   v.innerHTML = ui.tab==='recipes' ? recipesHTML() :
                 ui.tab==='list' ? listHTML() :
-                ui.tab==='record' ? recordHTML() : meHTML();
+                ui.tab==='record' ? recordHTML() :
+                ui.tab==='knowledge' ? knowledgeHTML() : meHTML();
   if(ui.tab==='recipes') updateRecipeList();
   var tbs = document.querySelectorAll('.tabbar button');
   for(var i=0;i<tbs.length;i++) tbs[i].classList.toggle('on', tbs[i].getAttribute('data-tab')===ui.tab);
@@ -2088,6 +2305,15 @@ function detailBodyHTML(){
   var cats = '<div class="section-title">分类</div><div class="cat-panel">'+
     '<div class="cat-line"><span>食材</span><div>'+((r.foods||[]).length ? r.foods.map(function(fp){ return '<span class="cat-pill">'+esc(fp.replace('/',' › '))+'</span>'; }).join('') : '<span class="hint tight">未标注</span>')+'</div></div>'+
     '<div class="cat-line"><span>做法</span><div>'+((r.methods||[]).length ? r.methods.map(function(m){ return '<span class="cat-pill alt">'+esc(m)+'</span>'; }).join('') : '<span class="hint tight">未标注</span>')+'</div></div></div>';
+  var ntags = recipeNutritionTags(r);
+  var nutriBlock = '<div class="section-title">营养亮点 <span class="note-count">按食材定性判断</span></div>'+
+    (ntags.length
+      ? '<div class="nutri-panel">'+ntags.map(function(t){
+          return '<div class="nutri-chip n-'+t.key+'"><span class="nutri-ico">'+t.emoji+'</span>'+
+            '<span class="nutri-name">'+esc(t.label)+'</span>'+
+            '<span class="nutri-src">'+esc(t.foods.slice(0,3).join('、'))+'</span></div>';
+        }).join('')+'</div>'
+      : '<div class="hint tight" style="margin:-2px 0 6px">这道菜的主料暂未匹配到营养标签——不是所有食材都有对应条目，属正常情况。</div>');
   return '<div class="hero"><div class="emoji" style="background:'+c.bg+'">'+c.emoji+'</div>'+
       '<h2>'+esc(r.title)+'</h2><div class="meta">'+esc(r.minutes||'—')+' 分钟 · '+esc(methodText(r))+' · '+groups.main.length+' 种食材 / '+groups.se.length+' 种调味料</div>'+
       '<div class="tags">'+tags+'</div></div>'+
@@ -2097,6 +2323,7 @@ function detailBodyHTML(){
       '<button type="button" data-act="serv-plus">+</button></div></div>'+
     '<div class="portion-note"><span>1 人份 = 你的份量标准（'+esc(state.profile.height)+'cm / '+esc(state.profile.weight)+'kg · 系数 '+esc(fmt(f))+'）</span><button type="button" data-act="go-profile">调整 ›</button></div>'+
     cats+
+    nutriBlock+
     cookBox+
     '<div class="section-title">食材 · '+groups.main.length+' 样 <button type="button" class="link" data-act="add-all">全部加入清单 ›</button></div>'+
     '<div class="panel">'+(groups.main.length ? ingRows(groups.main) : '<div class="check-row"><span class="check-main" style="color:var(--muted)">还没有标注食材</span></div>')+'</div>'+
@@ -2672,6 +2899,8 @@ document.addEventListener('click', function(e){
   if(act==='tab'){ ui.tab = el.getAttribute('data-tab'); window.scrollTo(0,0); render(); return; }
   /* ---- v12 好吃餐厅 ---- */
   if(act==='rec-sub'){ ui.recSub = v; if(v==='places') ui.placeRandom={}; window.scrollTo(0,0); render(); return; }
+  if(act==='nutri-week'){ var nw=Number(v); ui.nutriWeek = nw===0 ? todayKey() : shiftWeek(ui.nutriWeek||todayKey(), nw); render(); return; }
+  if(act==='kb-tab'){ ui.kbKey=v; render(); window.scrollTo(0,0); return; }
   if(act==='place-open'){ openPlaceDetail(id); return; }
   if(act==='place-add'){ openPlaceForm(null); return; }
   if(act==='place-edit'){ openPlaceForm(id); return; }
