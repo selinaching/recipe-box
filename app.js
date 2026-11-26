@@ -563,7 +563,7 @@ ui = { tab:'recipes', q:'', food:'全部', sub:'全部', method:'全部', onlyFa
        catTab:'food', imp:null, lb:null, cookHist:false,
        recSub:'cal', placeQ:'', placeStatus:'all', placeTag:'全部', placeSort:'score',
        placeForm:null, placeDetail:null, pcfgTab:'tag', placeRandom:{}, share:null,
-       nutriWeek:todayKey(), kbKey:'protein' };
+       nutriWeek:todayKey(), kbKey:'protein', kbView:'nutrient', spiceOpen:null };
 cloud = loadCloud();
 state = load();
 migrate();
@@ -590,7 +590,11 @@ function topbarHTML(){
       h1='饮食记录'; sub='';
     }
   }else if(ui.tab==='knowledge'){
-    h1='营养知识'; sub='常见营养素的每100g含量速查';
+    if(ui.kbView==='spice'){
+      h1='调味料图鉴'; sub='5 类调味料 · 分类与常见用法';
+    }else{
+      h1='营养知识'; sub='常见营养素的每100g含量速查';
+    }
   }else{
     h1='我的'; sub='份量标准与数据备份';
   }
@@ -925,12 +929,78 @@ function nutritionHTML(){
 }
 
 /* ================= v16 营养知识页 ================= */
+/* ============ v21 调味料知识（手绘 SVG + 分类用途） ============
+   手绘图标统一 viewBox 80x80，线条/描边由 CSS .spice-art 控制，自动适配深色。
+   每项 spice: {id, name, cat, art, use, tip}。 */
+var SPICE_GROUPS = [
+  { key:'salty', label:'咸味', note:'决定菜的底味。放盐的时机比用量更影响口感。' },
+  { key:'sweet', label:'甜酸', note:'平衡咸味、提亮风味。糖能吊鲜，醋能解腻。' },
+  { key:'aromatic', label:'香辛料', note:'去腥增香的主角。姜蒜葱是日常三件套，干料少量即可。' },
+  { key:'umami', label:'提香增鲜', note:'最后一步的点睛之笔，用量宁少勿多。' },
+  { key:'oil', label:'油脂', note:'传热与香气的载体。控量是关键，不同油烟点不同。' }
+];
+function spiceArtSvg(inner){ return '<svg viewBox="0 0 80 80" class="spice-art" aria-hidden="true">'+inner+'</svg>'; }
+var SPICE_ART = {
+  salt: spiceArtSvg('<path d="M26 38 Q25 36 26 33 L28 28 Q29 26 32 26 L48 26 Q51 26 52 28 L54 33 Q55 36 54 38 L53 64 Q53 68 49 68 L31 68 Q27 68 27 64 Z" fill="#F2EFE7"/><path d="M28 26 L27 18 Q27 15 31 15 L49 15 Q53 15 53 18 L52 26 Z" fill="#C9B99A"/><path d="M27 20 L53 20" fill="none"/><path d="M34 48 L40 44 L46 48 L40 52 Z" fill="#D9CBB0"/><circle cx="62" cy="18" r="2.2" fill="#fff"/><circle cx="68" cy="25" r="1.7" fill="#fff"/><circle cx="60" cy="28" r="1.5" fill="#fff"/>'),
+  soy: spiceArtSvg('<path d="M30 30 Q29 28 31 26 L33 22 Q34 20 37 20 L46 20 Q49 20 50 23 L51 27 Q53 29 52 32 L53 66 Q53 70 49 70 L33 70 Q29 70 29 66 Z" fill="#8B5A3C"/><path d="M34 20 L34 14 Q34 12 37 12 L45 12 Q48 12 48 14 L48 20 Z" fill="#5E3B26"/><rect x="32" y="42" width="16" height="18" rx="2" fill="#F2E6CC"/><path d="M35 48 L45 48 M35 53 L45 53" fill="none"/>'),
+  oyster: spiceArtSvg('<path d="M28 34 Q27 31 30 29 L50 29 Q53 31 52 34 L54 64 Q54 68 50 68 L30 68 Q26 68 26 64 Z" fill="#6E4A34"/><path d="M38 29 L37 20 Q37 17 40 17 L42 17 Q45 17 45 20 L44 29 Z" fill="#4A3020"/><rect x="31" y="44" width="18" height="14" rx="3" fill="#EADFC4"/><path d="M34 50 L46 50" fill="none"/>'),
+  douban: spiceArtSvg('<path d="M25 32 Q24 29 28 28 L52 28 Q56 29 55 32 L54 65 Q54 69 50 69 L30 69 Q26 69 26 65 Z" fill="#A8452C"/><path d="M24 30 Q24 26 28 25 L52 25 Q56 26 56 30 L56 33 Q56 35 53 35 L27 35 Q24 35 24 33 Z" fill="#7A3020"/><rect x="31" y="44" width="18" height="14" rx="2" fill="#F0E0C4"/><path d="M35 51 L45 51" fill="none"/>'),
+  sugar: spiceArtSvg('<path d="M24 36 Q24 32 29 31 L51 31 Q56 32 56 36 L55 64 Q55 68 51 68 L29 68 Q25 68 25 64 Z" fill="#FBF9F4"/><path d="M24 34 Q24 30 28 29 L52 29 Q56 30 56 34 L56 36 Q56 38 53 38 L27 38 Q24 38 24 36 Z" fill="#E8D9C0"/><rect x="33" y="46" width="14" height="12" rx="2" fill="#DCE8E0"/><circle cx="64" cy="26" r="2" fill="#fff"/><circle cx="70" cy="32" r="1.6" fill="#fff"/>'),
+  honey: spiceArtSvg('<path d="M25 34 Q24 31 28 30 L52 30 Q56 31 55 34 L54 64 Q54 68 50 68 L30 68 Q26 68 26 64 Z" fill="#E8A93C"/><path d="M24 32 Q24 28 28 27 L52 27 Q56 28 56 32 L56 35 Q56 37 53 37 L27 37 Q24 37 24 35 Z" fill="#B8792A"/><ellipse cx="40" cy="50" rx="9" ry="7" fill="#FBF0D8"/><path d="M62 40 Q66 46 62 50 Q58 46 62 40 Z" fill="#E8A93C"/>'),
+  vinegar: spiceArtSvg('<path d="M31 32 Q30 29 32 27 L34 23 Q35 21 38 21 L45 21 Q48 21 49 24 L51 28 Q52 30 51 33 L52 65 Q52 69 48 69 L34 69 Q30 69 30 65 Z" fill="#6B4A2F"/><rect x="35" y="14" width="12" height="8" rx="2" fill="#3E2B1C"/><rect x="33" y="44" width="15" height="14" rx="2" fill="#EFE3C8"/><path d="M36 51 L45 51" fill="none"/>'),
+  ginger: spiceArtSvg('<path d="M22 44 Q18 38 25 35 Q30 30 37 34 Q44 30 49 36 Q57 35 56 43 Q60 50 52 54 Q48 60 41 55 Q34 60 30 54 Q22 54 22 44 Z" fill="#D9B26A"/><path d="M30 40 Q34 44 32 50 M42 38 Q46 43 44 50" fill="none"/>'),
+  garlic: spiceArtSvg('<path d="M40 22 Q34 26 30 34 Q26 44 30 54 Q35 62 40 62 Q45 62 50 54 Q54 44 50 34 Q46 26 40 22 Z" fill="#F2EDE2"/><path d="M40 26 Q36 38 40 58 M40 26 Q44 38 40 58 M32 32 Q40 40 34 54 M48 32 Q40 40 46 54" fill="none"/><path d="M38 22 L40 16 L42 22 Z" fill="#C9C0AA"/>'),
+  scallion: spiceArtSvg('<path d="M36 44 Q34 54 35 66 Q40 68 45 66 Q46 54 44 44 Z" fill="#F6F2E6"/><path d="M38 44 Q34 30 30 16 Q36 22 40 36 Q42 24 48 14 Q46 30 43 44 Z" fill="#7FA65B"/><path d="M40 42 Q37 28 33 20 M41 42 Q44 28 46 20" fill="none"/>'),
+  chili: spiceArtSvg('<path d="M30 24 Q28 20 32 19 Q38 20 40 26 Q44 36 52 44 Q58 50 54 56 Q48 60 42 54 Q32 46 28 34 Q26 28 30 24 Z" fill="#D8452F"/><path d="M28 22 Q24 18 26 15 Q30 16 32 20 Z" fill="#5E8B3C"/><path d="M34 28 Q38 36 44 42" fill="none"/>'),
+  peppercorn: spiceArtSvg('<circle cx="32" cy="46" r="9" fill="#9B6B3A"/><circle cx="48" cy="42" r="8" fill="#A87542"/><circle cx="42" cy="57" r="8" fill="#8F6234"/><path d="M28 44 L36 48 M45 40 L51 44" fill="none"/><path d="M32 46 Q40 34 48 42" fill="none"/>'),
+  staranise: spiceArtSvg('<path d="M40 40 L37 20 L42 20 Z M40 40 L52 24 L55 28 Z M40 40 L60 36 L60 41 Z M40 40 L55 51 L51 55 Z M40 40 L43 60 L38 60 Z M40 40 L28 55 L25 51 Z M40 40 L20 42 L20 37 Z M40 40 L26 27 L30 23 Z" fill="#8A5A34"/><circle cx="40" cy="40" r="4" fill="#6E4526"/>'),
+  blackpepper: spiceArtSvg('<path d="M30 34 Q29 31 32 29 L48 29 Q51 31 50 34 L51 65 Q51 69 47 69 L33 69 Q29 69 29 65 Z" fill="#5A4636"/><path d="M31 29 L31 20 Q31 17 34 17 L46 17 Q49 17 49 20 L49 29 Z" fill="#8C7358"/><circle cx="40" cy="15" r="3" fill="#4A3A2C"/><circle cx="60" cy="58" r="1.8" fill="#3E3025"/><circle cx="66" cy="64" r="1.5" fill="#3E3025"/>'),
+  cookingwine: spiceArtSvg('<path d="M30 28 Q29 25 32 23 L34 19 Q35 17 38 17 L45 17 Q48 17 49 20 L51 24 Q52 26 51 29 L52 66 Q52 70 48 70 L34 70 Q30 70 30 66 Z" fill="#B8894A"/><rect x="35" y="11" width="13" height="8" rx="2" fill="#6E4A24"/><rect x="32" y="42" width="17" height="16" rx="2" fill="#F5EBD2"/><path d="M36 48 L45 48 M36 53 L45 53" fill="none"/>'),
+  sesameoil: spiceArtSvg('<path d="M31 32 Q30 29 32 27 L34 24 Q35 22 38 22 L45 22 Q48 22 49 25 L50 28 Q52 30 51 33 L52 65 Q52 69 48 69 L34 69 Q30 69 30 65 Z" fill="#C08A3E"/><rect x="35" y="15" width="13" height="8" rx="2" fill="#7A5322"/><rect x="33" y="44" width="16" height="14" rx="2" fill="#F2E8CE"/><circle cx="62" cy="52" r="2" fill="#C08A3E"/>'),
+  oil: spiceArtSvg('<path d="M28 36 Q27 33 30 31 L50 31 Q53 33 52 36 L53 65 Q53 69 49 69 L31 69 Q27 69 27 65 Z" fill="#E5C158"/><path d="M30 34 L20 30 Q18 29 19 27 Q20 25 23 26 L31 30 Z" fill="#D4A93E"/><rect x="36" y="26" width="10" height="6" rx="2" fill="#B8892A"/><path d="M62 50 Q65 55 62 58 Q59 55 62 50 Z" fill="#E5C158"/>'),
+  butter: spiceArtSvg('<path d="M22 44 L48 38 Q52 37 53 41 L56 58 Q57 62 53 63 L27 68 Q23 69 22 65 L19 48 Q18 45 22 44 Z" fill="#F2D77A"/><path d="M22 44 L48 38 Q52 37 53 41 L26 47 Z" fill="#F8E6A0"/><path d="M53 41 L56 58 Q57 62 53 63 L26 68 L27 47 Z" fill="#EBD06A"/><path d="M22 44 L20 55 L30 57 L32 46 Z" fill="#EFE9DC"/>'),
+  chicken: spiceArtSvg('<path d="M30 20 L31 16 L34 20 L37 16 L40 20 L43 16 L46 20 L49 16 L50 20 Z" fill="#E0A93A"/><path d="M30 20 L50 20 L53 66 Q54 70 50 70 L30 70 Q26 70 27 66 Z" fill="#F2C94C"/><rect x="31" y="42" width="18" height="16" rx="2" fill="#FFF7E0"/><circle cx="40" cy="50" r="4" fill="#E0A93A"/>'),
+  ketchup: spiceArtSvg('<rect x="36" y="13" width="9" height="7" rx="1" fill="#A83224"/><path d="M35 20 L45 20 L45 24 L49 28 Q51 30 50 33 L52 66 Q52 70 48 70 L32 70 Q28 70 28 66 L30 33 Q29 30 31 28 L35 24 Z" fill="#D8432F"/><rect x="31" y="44" width="18" height="15" rx="2" fill="#FBEFE0"/><circle cx="40" cy="51" r="4" fill="#D8432F"/>'),
+  whitevinegar: spiceArtSvg('<rect x="35" y="12" width="10" height="8" rx="2" fill="#C9C3B0"/><path d="M31 20 L49 20 Q52 20 51 24 L52 66 Q52 70 48 70 L32 70 Q28 70 28 66 L29 24 Q28 20 31 20 Z" fill="#F5F2E8"/><path d="M30 46 Q40 44 50 46 L52 66 Q52 70 48 70 L32 70 Q28 70 28 66 Z" fill="#E9E1C9"/><rect x="32" y="50" width="16" height="12" rx="2" fill="#FFFFFF"/>'),
+  cumin: spiceArtSvg('<ellipse cx="40" cy="35" rx="3" ry="6" transform="rotate(10 40 35)" fill="#A07C4B"/><ellipse cx="30" cy="48" rx="3" ry="6" transform="rotate(-25 30 48)" fill="#8B6A3F"/><ellipse cx="50" cy="49" rx="3" ry="6" transform="rotate(-15 50 49)" fill="#9B7848"/><ellipse cx="39" cy="47" rx="3" ry="6" transform="rotate(15 39 47)" fill="#7E5F38"/><ellipse cx="34" cy="59" rx="3" ry="6" transform="rotate(30 34 59)" fill="#946F42"/><ellipse cx="47" cy="60" rx="3" ry="6" transform="rotate(-30 47 60)" fill="#8B6A3F"/>'),
+  sesampaste: spiceArtSvg('<path d="M26 28 Q25 23 29 23 L51 23 Q55 23 54 28 L54 32 Q54 34 51 34 L29 34 Q26 34 26 32 Z" fill="#B8A47E"/><path d="M28 34 Q27 32 29 31 L51 31 Q53 32 52 34 L53 66 Q53 70 49 70 L31 70 Q27 70 27 66 Z" fill="#E8D9BC"/><rect x="31" y="42" width="18" height="17" rx="2" fill="#FBF5E6"/><ellipse cx="40" cy="50" rx="6" ry="5" fill="#C9AD7C"/>')
+};
+var SPICES = [
+  {id:'salt', name:'食盐', cat:'salty', art:'salt', use:'最基础的咸味来源，几乎每道菜都要用。', tip:'出锅前再放盐，少量也够味；炖肉早放盐更入味。'},
+  {id:'soy', name:'酱油', cat:'salty', art:'soy', use:'咸鲜兼备，给菜上色、增香、提味。', tip:'生抽调味、老抽上色；点蘸和凉拌用生抽更清爽。'},
+  {id:'oyster', name:'蚝油', cat:'salty', art:'oyster', use:'浓稠鲜甜，炒菜、拌馅、淋汁都好用。', tip:'出锅前放，别长时间高温；本身有咸味，盐要相应减少。'},
+  {id:'douban', name:'豆瓣酱', cat:'salty', art:'douban', use:'咸香带辣，川菜灵魂，炒酱、烧菜、蘸水都行。', tip:'先下锅炒出红油再放主料；清蒸、白灼类菜别放太多抢味。'},
+  {id:'sugar', name:'白糖', cat:'sweet', art:'sugar', use:'提鲜、平衡酸味、给菜肴上光泽。', tip:'炒糖色能给红烧菜上色，火候过头会发苦。'},
+  {id:'honey', name:'蜂蜜', cat:'sweet', art:'honey', use:'温和的甜味，常用于凉拌、饮品和点心。', tip:'别用开水冲，会破坏风味；1 岁以下婴儿禁食。'},
+  {id:'vinegar', name:'香醋', cat:'sweet', art:'vinegar', use:'酸味开胃、解腻，凉拌和蘸料常客。', tip:'出锅前沿锅边淋一点，香气更足；陈醋适合重口味。'},
+  {id:'ginger', name:'姜', cat:'aromatic', art:'ginger', use:'去腥散寒，鱼肉类、汤品几乎离不开。', tip:'切片拍扁更出味；皮凉性，做菜可留皮、煲汤去腥去皮。'},
+  {id:'garlic', name:'蒜', cat:'aromatic', art:'garlic', use:'蒜香浓郁，爆香、凉拌、腌料都常用。', tip:'切碎后静置几分钟再下锅，蒜味更足；小火防焦苦。'},
+  {id:'scallion', name:'小葱', cat:'aromatic', art:'scallion', use:'增香提色，葱白爆锅、葱花点缀。', tip:'葱白耐炒、葱叶易熟，分开下锅效果最好。'},
+  {id:'chili', name:'辣椒', cat:'aromatic', art:'chili', use:'提供辣味和香气，鲜椒、干椒各有风味。', tip:'去籽减辣；干辣椒小火炒香再下料，别炒糊。'},
+  {id:'peppercorn', name:'花椒', cat:'aromatic', art:'peppercorn', use:'麻香独特，川菜和卤味的关键香料。', tip:'小火煸香后捞出花椒粒，只留麻香不吃粒。'},
+  {id:'staranise', name:'八角', cat:'aromatic', art:'staranise', use:'甜香型香料，炖肉、卤味、红烧的常客。', tip:'一两块就够，放多会盖味；整颗使用，方便挑出。'},
+  {id:'blackpepper', name:'黑胡椒', cat:'aromatic', art:'blackpepper', use:'辛香微辣，配牛排、鸡肉、汤和沙拉。', tip:'现磨香气最足；关火后撒，避免久煮辛味变苦。'},
+  {id:'cookingwine', name:'料酒', cat:'umami', art:'cookingwine', use:'去腥增香，腌肉和炒肉时加一点。', tip:'沿锅边淋入让酒精挥发；用量别太多，否则发酸。'},
+  {id:'sesameoil', name:'香油', cat:'umami', art:'sesameoil', use:'芝麻香浓，凉拌、汤品、蘸料的点睛之笔。', tip:'不耐高温，出锅后淋几滴即可。'},
+  {id:'oil', name:'食用油', cat:'oil', art:'oil', use:'传热媒介，煎炒炸烤都靠它。', tip:'不同油烟点不同：爆炒用高烟点油，凉拌用橄榄油。'},
+  {id:'butter', name:'黄油', cat:'oil', art:'butter', use:'奶香浓郁，煎牛排、烘焙、做酱汁常用。', tip:'小火防焦；想增香可最后加一小块「蒙油」。'},
+  {id:'chicken', name:'鸡精', cat:'umami', art:'chicken', use:'复合鲜味，炒菜、煲汤、拌馅提鲜都常用。', tip:'本身含盐，用了鸡精要相应少放盐；出锅前放更鲜。'},
+  {id:'ketchup', name:'番茄酱', cat:'sweet', art:'ketchup', use:'酸甜番茄味，蘸薯条、做糖醋菜、拌沙拉常用。', tip:'做糖醋菜时先下锅炒一下更香；开盖后冷藏保存。'},
+  {id:'whitevinegar', name:'白醋', cat:'sweet', art:'whitevinegar', use:'酸味清爽不抢色，凉拌、腌菜、去腥都好用。', tip:'腌白萝卜、拍黄瓜用它不易变色；和香醋别混用，风味不同。'},
+  {id:'cumin', name:'孜然', cat:'aromatic', art:'cumin', use:'香气浓烈，烤羊肉、烧烤、炒土豆的标志性香料。', tip:'粒状小火炒香再下料，或磨成粉出锅前撒；别炒糊会发苦。'},
+  {id:'sesampaste', name:'芝麻酱', cat:'umami', art:'sesampaste', use:'醇厚芝麻香，拌面、火锅蘸料、凉拌菜的灵魂。', tip:'先用温水澥开再调，直接加冷水会结块；易分层，吃前搅匀。'}
+];
 function kbCurrent(){
   var k = ui.kbKey;
   for(var i=0;i<NUTRIENT_KB.length;i++) if(NUTRIENT_KB[i].key===k) return NUTRIENT_KB[i];
   return NUTRIENT_KB[0];
 }
 function knowledgeHTML(){
+  var seg = '<div class="rec-sub kb-view-sub">'+
+    '<button type="button" data-act="kb-view" data-v="nutrient" class="'+(ui.kbView!=='spice'?'on':'')+'">营养成分</button>'+
+    '<button type="button" data-act="kb-view" data-v="spice" class="'+(ui.kbView==='spice'?'on':'')+'">调味料图鉴</button>'+
+  '</div>';
+  if(ui.kbView==='spice') return seg + seasoningHTML();
   var cur = kbCurrent();
   var chips = NUTRIENT_KB.map(function(g){
     return '<button type="button" class="chip '+(g.key===cur.key?'on':'')+'" data-act="kb-tab" data-v="'+g.key+'">'+esc(g.label)+'</button>';
@@ -947,7 +1017,7 @@ function knowledgeHTML(){
   }).join('');
   var first = cur.foods.slice().sort(function(a,b){ return a.v-b.v; })[0];
   var last = cur.foods.slice().sort(function(a,b){ return b.v-a.v; })[0];
-  return '<div class="chips kb-chips">'+chips+'</div>'+
+  return seg + '<div class="chips kb-chips">'+chips+'</div>'+
     '<div class="kb-card">'+
       '<div class="kb-head"><div class="kb-title">'+esc(cur.label)+'</div>'+
       '<div class="kb-sub">'+esc(cur.sub)+'</div></div>'+
@@ -955,6 +1025,27 @@ function knowledgeHTML(){
       '<div class="kb-bars">'+rows+'</div>'+
       '<div class="kb-foot">最高 <b>'+esc(last.n)+' '+esc(fmt(last.v))+esc(cur.unit)+'</b> · 最低 <b>'+esc(first.n)+' '+esc(fmt(first.v))+esc(cur.unit)+'</b></div>'+
     '</div>';
+}
+function seasoningHTML(){
+  var groups = SPICE_GROUPS.map(function(g){
+    var items = SPICES.filter(function(s){ return s.cat===g.key; });
+    var cards = items.map(function(s){
+      var open = ui.spiceOpen===s.id;
+      return '<div class="spice-card'+(open?' open':'')+'" data-act="spice-toggle" data-v="'+s.id+'">'+
+        '<div class="spice-pic">'+(SPICE_ART[s.art]||'')+'</div>'+
+        '<div class="spice-info"><b>'+esc(s.name)+'</b><span>'+esc(s.use)+'</span>'+
+          (open ? '<em>'+esc(s.tip)+'</em>' : '')+
+        '</div>'+
+        '<span class="spice-more">'+(open?'收起':'用法')+'</span>'+
+      '</div>';
+    }).join('');
+    return '<div class="spice-group">'+
+      '<div class="spice-gtitle"><b>'+esc(g.label)+'</b><span>'+esc(g.note)+'</span></div>'+
+      '<div class="spice-grid">'+cards+'</div>'+
+    '</div>';
+  }).join('');
+  return '<div class="spice-intro">点每样调味料看「用法」，从分类到用途一次搞懂。</div>'+groups+
+    '<div class="kb-src-spice">手绘图标为示意图 · 用途为常见做法，具体用法因菜而异</div>';
 }
 /* ================= 好吃餐厅（v12） ================= */
 function placeCfg(){
@@ -2978,6 +3069,8 @@ document.addEventListener('click', function(e){
   if(act==='rec-sub'){ ui.recSub = v; if(v==='places') ui.placeRandom={}; window.scrollTo(0,0); render(); return; }
   if(act==='nutri-week'){ var nw=Number(v); ui.nutriWeek = nw===0 ? todayKey() : shiftWeek(ui.nutriWeek||todayKey(), nw); render(); return; }
   if(act==='kb-tab'){ ui.kbKey=v; render(); window.scrollTo(0,0); return; }
+  if(act==='kb-view'){ ui.kbView=v; ui.spiceOpen=null; render(); window.scrollTo(0,0); return; }
+  if(act==='spice-toggle'){ ui.spiceOpen = (ui.spiceOpen===v?null:v); render(); return; }
   if(act==='place-open'){ openPlaceDetail(id); return; }
   if(act==='place-add'){ openPlaceForm(null); return; }
   if(act==='place-edit'){ openPlaceForm(id); return; }
