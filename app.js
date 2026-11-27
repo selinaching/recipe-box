@@ -627,13 +627,16 @@ function cardHTML(r){
   var c = iconFor(r);
   var tags = tagLabels(r).slice(0,3).map(function(t){ return '<span class="tag">'+esc(t)+'</span>'; }).join('');
   if(r.cookCount>0) tags += '<span class="tag cooked">做过 '+Number(r.cookCount)+' 次</span>';
-  return '<article class="card" data-act="open" data-id="'+esc(r.id)+'">'+
-    '<div class="thumb" style="background:'+c.bg+'">'+c.emoji+'</div>'+
-    '<div class="card-body"><h3>'+esc(r.title)+'</h3>'+
-    '<div class="meta">'+esc(r.minutes||'—')+' 分钟 · '+esc(r.baseServings||2)+' 人份 · '+esc(methodText(r))+'</div>'+
-    '<div class="tags">'+tags+'</div></div>'+
-    '<button class="fav '+(r.favorite?'on':'')+'" data-act="fav" data-id="'+esc(r.id)+'" aria-label="收藏">'+(r.favorite?'♥':'♡')+'</button>'+
-  '</article>';
+  return '<div class="swipe-wrap" data-swipe-id="'+esc(r.id)+'">'+
+    '<button type="button" class="swipe-del" data-act="swipe-del" data-id="'+esc(r.id)+'" aria-label="删除这道食谱">删除</button>'+
+    '<article class="card" data-act="open" data-id="'+esc(r.id)+'">'+
+      '<div class="thumb" style="background:'+c.bg+'">'+c.emoji+'</div>'+
+      '<div class="card-body"><h3>'+esc(r.title)+'</h3>'+
+      '<div class="meta">'+esc(r.minutes||'—')+' 分钟 · '+esc(r.baseServings||2)+' 人份 · '+esc(methodText(r))+'</div>'+
+      '<div class="tags">'+tags+'</div></div>'+
+      '<button class="fav '+(r.favorite?'on':'')+'" data-act="fav" data-id="'+esc(r.id)+'" aria-label="收藏">'+(r.favorite?'♥':'♡')+'</button>'+
+    '</article>'+
+  '</div>';
 }
 function recipeListHTML(){
   var arr = filteredRecipes();
@@ -3056,6 +3059,74 @@ function importData(file){
   reader.readAsText(file);
 }
 
+/* ============ v22 食谱卡片微信式右滑删除 ============ */
+var SWIPE_W = 82;           /* 删除按钮露出的宽度，和 CSS .swipe-del 宽一致 */
+var swipeState = null;      /* {wrap, card, x0, y0, locked, openStart} */
+var openSwipeWrap = null;   /* 当前处于展开态的 wrap，保证同时只有一个 */
+function closeSwipe(wrap){
+  if(!wrap) return;
+  var card = wrap.querySelector('.card');
+  if(card){ card.style.transform=''; card.classList.remove('swiped'); }
+  if(openSwipeWrap===wrap) openSwipeWrap=null;
+}
+function closeAllSwipes(){
+  Array.prototype.forEach.call(document.querySelectorAll('.swipe-wrap'), closeSwipe);
+}
+function initSwipe(){
+  document.addEventListener('touchstart', function(e){
+    if(ui.tab!=='recipes') return;
+    var wrap = e.target.closest ? e.target.closest('.swipe-wrap') : null;
+    if(!wrap || e.touches.length!==1) return;
+    var t = e.touches[0];
+    var card = wrap.querySelector('.card');
+    if(!card) return;
+    var alreadyOpen = (openSwipeWrap===wrap);
+    /* 点到别处时，收起之前展开的 */
+    if(openSwipeWrap && openSwipeWrap!==wrap){ closeSwipe(openSwipeWrap); }
+    swipeState = { wrap:wrap, card:card, x0:t.clientX, y0:t.clientY,
+                   locked:null, openStart:alreadyOpen ? -SWIPE_W : 0, moved:false };
+  }, {passive:true});
+
+  document.addEventListener('touchmove', function(e){
+    if(!swipeState || e.touches.length!==1) return;
+    var t = e.touches[0];
+    var dx = t.clientX - swipeState.x0, dy = t.clientY - swipeState.y0;
+    if(!swipeState.locked){
+      if(Math.abs(dx)<8 && Math.abs(dy)<8) return;
+      /* 水平意图才接管，垂直方向交给页面滚动 */
+      swipeState.locked = Math.abs(dx)>Math.abs(dy)*1.2 ? 'x' : 'y';
+      if(swipeState.locked==='x') swipeState.card.style.transition='none';
+    }
+    if(swipeState.locked!=='x') return;
+    if(e.cancelable) e.preventDefault();  /* 水平拖动时阻止页面滚动 */
+    var base = swipeState.openStart;
+    var x = base + dx;
+    if(x>0) x=0;
+    if(x< -SWIPE_W*1.3) x= -SWIPE_W*1.3;
+    swipeState.card.style.transform='translateX('+x+'px)';
+    swipeState.moved = true;
+  }, {passive:false});
+
+  document.addEventListener('touchend', function(e){
+    if(!swipeState) return;
+    var s = swipeState; swipeState = null;
+    if(s.locked!=='x') return;
+    s.card.style.transition='';
+    /* 用本次位移判定目标态：左滑超过阈值或已有展开则展开，否则收起 */
+    var finalX = 0;
+    var m = /translateX\(([-\d.]+)px\)/.exec(s.card.style.transform||'');
+    if(m) finalX = Number(m[1]);
+    var shouldOpen = finalX < -SWIPE_W/2;
+    if(shouldOpen && openSwipeWrap && openSwipeWrap!==s.wrap) closeSwipe(openSwipeWrap);
+    s.card.style.transform = shouldOpen ? ('translateX(-'+SWIPE_W+'px)') : '';
+    s.card.classList.toggle('swiped', shouldOpen);
+    openSwipeWrap = shouldOpen ? s.wrap : null;
+    /* 防止滑动结束时误触发卡片的 open 点击 */
+    if(s.moved){ e.preventDefault(); }
+  }, {passive:false});
+}
+initSwipe();
+
 document.addEventListener('click', function(e){
   var el = e.target.closest('[data-act]');
   if(!el) return;
@@ -3063,6 +3134,14 @@ document.addEventListener('click', function(e){
   var id = el.getAttribute('data-id');
   var idx = el.getAttribute('data-i');
   var v = el.getAttribute('data-v');
+
+  /* 右滑删除：点展开卡片本体（非删除按钮）先收起，不触发打开/收藏 */
+  if(openSwipeWrap && act!=='swipe-del'){
+    var inOpen = el.closest ? el.closest('.swipe-wrap') : null;
+    if(inOpen===openSwipeWrap && openSwipeWrap.contains(e.target)){
+      if(act==='open' || act==='fav'){ closeSwipe(openSwipeWrap); return; }
+    } else if(inOpen!==openSwipeWrap){ closeSwipe(openSwipeWrap); }
+  }
 
   if(act==='tab'){ ui.tab = el.getAttribute('data-tab'); window.scrollTo(0,0); render(); return; }
   /* ---- v12 好吃餐厅 ---- */
@@ -3201,6 +3280,14 @@ document.addEventListener('click', function(e){
     if(confirm('删除「'+rdel.title+'」？这一步不能撤销。')){
       state.recipes = state.recipes.filter(function(x){return x.id!==id;});
       save(); closeSheet(); render(); toast('已删除');
+    }
+    return;
+  }
+  if(act==='swipe-del'){
+    var rsd = recipeById(id); if(!rsd) return;
+    if(confirm('删除「'+rsd.title+'」？这一步不能撤销。')){
+      state.recipes = state.recipes.filter(function(x){return x.id!==id;});
+      save(); render(); toast('已删除「'+rsd.title+'」');
     }
     return;
   }
