@@ -516,3 +516,10 @@ textarea.field.mono{min-height:92px;resize:vertical;line-height:1.5}
 .spice-info em{font-size:11px;color:var(--brand);font-style:normal;line-height:1.5;background:var(--brand-soft);border-radius:8px;padding:7px 8px;margin-top:3px;text-align:left}
 .spice-more{position:absolute;top:8px;right:8px;font-size:10px;color:var(--brand);background:var(--brand-soft);padding:2px 7px;border-radius:999px}
 .kb-src-spice{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px;text-align:center}
+
+/* ============ v22 微信式右滑删除 ============ */
+.swipe-wrap{position:relative;overflow:hidden;border-radius:var(--radius);margin-bottom:11px;background:var(--danger)}
+.swipe-wrap .card{margin-bottom:0;border-radius:var(--radius);transition:transform .22s ease;will-change:transform;touch-action:pan-y}
+.swipe-del{position:absolute;top:0;right:0;bottom:0;width:82px;border:0;background:var(--danger);color:#fff;font-size:15px;font-weight:600;letter-spacing:2px;border-radius:0;z-index:0}
+.swipe-del:active{background:#a93226}
+.swipe-wrap .card{z-index:1}
