@@ -447,7 +447,19 @@ function toast(msg, opt){
   }
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, (opt && opt.label) ? 5000 : 2000);
+  var dur = (opt && opt.duration) ? opt.duration : ((opt && opt.label) ? 5000 : 2000);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, dur);
+}
+/* 云同步慢操作期间保持提示不消失，直到调用 toastDismiss */
+function toastWait(msg){
+  var t = document.getElementById('toast');
+  t.className='toast'; t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);   /* 不设自动消失，由后续 toast / toastDismiss 结束 */
+}
+function toastDismiss(){
+  var t = document.getElementById('toast');
+  clearTimeout(toastTimer);
+  t.classList.remove('show');
 }
 
 function inferFoods(r){
@@ -2748,7 +2760,9 @@ function ghErr(e){
   if(e && e.message==='nofile') return '云端 Gist 里还没有数据文件，先点「↑ 上传」';
   if(e && (e.status===401 || e.status===403)) return 'GitHub 拒绝访问：Token 无效、过期，或没勾 Gist 权限';
   if(e && e.status===404) return '找不到这个 Gist，检查 Gist ID 或重新建一个';
+  if(e && e.status===408) return '下载超时：网络较慢，请换用稳定网络后重试';
   if(e && e.status===422) return 'GitHub 存不下（图片太多导致数据过大）';
+  if(e && String(e.message||'').indexOf('格式错误')>-1) return '云端数据读取异常，请重试；仍不行就用「↑ 上传」覆盖';
   return '连不上 GitHub，检查网络后重试';
 }
 function cloudGetRemote(){
@@ -2758,11 +2772,17 @@ function cloudGetRemote(){
     var owner = (g.owner && g.owner.login) || cloud.owner || '';
     if(owner && owner!==cloud.owner){ cloud.owner = owner; saveCloud(); }
     var raw = f.raw_url || cloudRawUrl();
-    return fetch(raw).then(function(r){
+    /* 大文件（含图片）拉取较慢，加超时保护，避免一直挂起像"没反应" */
+    var ctrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 60000) : null;
+    var done = function(){ if(timer) clearTimeout(timer); };
+    return fetch(raw, ctrl ? {signal:ctrl.signal} : undefined).then(function(r){
       if(!r.ok){ var e = new Error('HTTP '+r.status); e.status=r.status; throw e; }
-      return r.json();
+      return r.text().then(function(txt){ done(); try{ return JSON.parse(txt); }catch(pe){ var pe2=new Error('云端数据格式错误'); throw pe2; } });
     }).catch(function(e){
-      if(typeof f.content==='string' && f.content.length) return JSON.parse(f.content);
+      done();
+      /* API content 对大文件会截断，回退会得到不完整 JSON —— 明确报错，不静默 */
+      if(e && e.name==='AbortError'){ var te=new Error('下载超时'); te.status=408; throw te; }
       throw e;
     });
   });
@@ -2823,9 +2843,10 @@ function cloudDisconnect(){
 }
 function cloudSync(mode, silent){
   if(!cloudReady()){ toast('先在「云同步」里填 Token 并连接'); return; }
-  if(cloudBusy) return;
+  if(cloudBusy){ if(!silent) toast('正在同步中，请稍候…'); return; }
   cloudBusy = true;
-  if(!silent) toast('正在同步…');
+  /* 云端数据含图片较大，下载可能十几秒；用不消失的提示避免误以为"没反应" */
+  if(!silent) toastWait(mode==='up' ? '正在上传云端…' : '正在读取云端数据，含图片请稍候…');
   var fail = function(e){ cloudBusy = false; toast(ghErr(e)); };
   if(mode==='force'){
     return cloudPut(envelope()).then(function(){
