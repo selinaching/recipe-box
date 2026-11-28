@@ -100,6 +100,45 @@ var SAMPLES = [
   }
 ];
 
+/* ================= 主题系统（v26） =================
+   默认视觉 = 浅天蓝背景 / 奶油白卡片 / 明黄按钮 / 暖炭黑文字。
+   vars 中未列出的变量继承 styles.css :root。字体统一用系统字体，不加载外部字体。 */
+var TKEY = 'recipe-box-theme-v1';
+var THEMES = [
+  { id:'default', name:'明亮 · 清爽', emoji:'☀️', note:'浅天蓝配奶油白，明亮清爽', vars:{
+      '--bg':'#D8F1FC','--surface':'#FFFBEF','--surface2':'#EAF6FE','--text':'#30302C','--muted':'#74756D',
+      '--line':'#D3E5EC','--brand':'#FFE278','--brand-soft':'#FFF3C4','--ok':'#91B87A','--danger':'#EE7461',
+      '--brand-ink':'#30302C','--on-brand':'#30302C','--shadow':'0 2px 6px rgba(48,48,44,.06)',
+      '--btn-shadow':'0 2px 0 rgba(130,100,20,.12)' } },
+  { id:'night', name:'夜间 · 静蓝', emoji:'🌙', note:'暗色背景，夜里看着舒服', vars:{
+      '--bg':'#202A33','--surface':'#2A343D','--surface2':'#333F49','--text':'#F2F5F7','--muted':'#A9B5BE',
+      '--line':'#3D4A54','--brand':'#FFE278','--brand-soft':'#4A4430','--ok':'#91B87A','--danger':'#EE7461',
+      '--brand-ink':'#FFE278','--on-brand':'#30302C','--shadow':'0 2px 6px rgba(0,0,0,.3)',
+      '--btn-shadow':'0 2px 0 rgba(0,0,0,.25)' } }
+];
+var theme = { id:'default' };
+function loadTheme(){
+  try{
+    var raw = localStorage.getItem(TKEY);
+    if(raw){ var d = JSON.parse(raw); if(d && d.id) return { id:d.id }; }
+  }catch(e){}
+  return { id:'default' };
+}
+function saveTheme(){ try{ localStorage.setItem(TKEY, JSON.stringify(theme)); }catch(e){} }
+function themeById(id){ for(var i=0;i<THEMES.length;i++) if(THEMES[i].id===id) return THEMES[i]; return null; }
+function applyTheme(){
+  var t = themeById(theme.id) || THEMES[0];
+  var root = document.documentElement;
+  /* 先清掉上一套主题写入的内联变量，再套用新主题，保证未列出的变量回落到 :root */
+  if(root.__themeVars){ for(var k in root.__themeVars){ if(Object.prototype.hasOwnProperty.call(root.__themeVars,k)) root.style.removeProperty(k); } }
+  root.__themeVars = {};
+  Object.keys(t.vars).forEach(function(k){ root.style.setProperty(k, t.vars[k]); root.__themeVars[k]=1; });
+  /* 主题 class：供少量无法用变量覆盖的组件样式使用（如滑块轨道） */
+  root.setAttribute('data-theme', t.id);
+  var mt = document.querySelector('meta[name="theme-color"]');
+  if(mt) mt.setAttribute('content', t.vars['--bg'] || '#FAF7F2');
+}
+
 var KEY = 'recipe-box-v1';
 /* v12 好吃餐厅：默认标签词表与评分维度，用户可在「管理」里任意增减改名 */
 var DEFAULT_PLACE_TAGS = ['日料','火锅','西餐','咖啡甜品','中式','烧烤','约会','朋友聚餐','一人食','安静','有包间','适合请客'];
@@ -453,7 +492,13 @@ function toast(msg, opt){
 /* 云同步慢操作期间保持提示不消失，直到调用 toastDismiss */
 function toastWait(msg){
   var t = document.getElementById('toast');
-  t.className='toast'; t.textContent=msg; t.classList.add('show');
+  t.className='toast'; t.textContent='';
+  var spin = document.createElement('span');
+  spin.className = 'spin-icon';
+  spin.textContent = '◌';
+  t.appendChild(spin);
+  t.appendChild(document.createTextNode(' '+msg));
+  t.classList.add('show');
   clearTimeout(toastTimer);   /* 不设自动消失，由后续 toast / toastDismiss 结束 */
 }
 function toastDismiss(){
@@ -578,6 +623,8 @@ ui = { tab:'recipes', q:'', food:'全部', sub:'全部', method:'全部', onlyFa
        nutriWeek:todayKey(), kbKey:'protein', kbView:'nutrient', spiceOpen:null,
        tabHistory:['recipes'] };
 cloud = loadCloud();
+theme = loadTheme();
+applyTheme();
 state = load();
 migrate();
 catState();
@@ -679,10 +726,7 @@ function recipesHTML(){
   var f1 = ['全部'].concat(foodTree().map(function(g){return g.name;}));
   var f2 = ui.food==='全部' ? [] : ['全部细分'].concat(usedSubs(ui.food));
   var m1 = ['全部'].concat(methods());
-  var html = '<div class="import-entry two">'+
-      '<button type="button" class="imp-single" data-act="import-open"><b>＋ 导入单篇菜谱</b><small>小红书 / B站 分享文字</small></button>'+
-      '<button type="button" class="imp-batch" data-act="batch-open"><b>▦ 批量导入</b><small>候选 JSON · 选题雷达</small></button>'+
-    '</div>';
+  var html = '';
   html += '<input class="search" id="search" type="search" placeholder="搜菜名、食材或分类" value="'+esc(ui.q)+'" autocomplete="off">';
   html += '<div class="filter-block"><div class="filter-label">按食材</div>'+
           '<div class="chips compact">'+chipRow(f1, ui.food, 'food1', 'data-v')+'</div>';
@@ -786,7 +830,7 @@ function listHTML(){
     '<button type="button" data-act="list-mode" data-v="merged" class="'+(ui.listMode==='merged'?'on':'')+'">按食材合并</button>'+
     '<button type="button" data-act="list-mode" data-v="recipe" class="'+(ui.listMode==='recipe'?'on':'')+'">按菜谱查看</button></div>';
   if(!state.checklist.length){
-    return add + mode + '<div class="empty"><div class="big">🧺</div><h3>清单是空的</h3><p>在食谱详情点「加入购物清单」，<br>或在「记录」里选菜，食材会自动进来。</p>'+
+    return add + mode + '<div class="empty"><div class="big">🧺</div><h3>清单是空的</h3>'+
       '<button type="button" data-act="tab" data-tab="recipes">去挑一道菜</button></div>';
   }
   var hint = '';
@@ -870,78 +914,10 @@ function dayDetailHTML(){
 function recordHTML(){
   var seg = '<div class="rec-sub">'+
     '<button type="button" data-act="rec-sub" data-v="cal" class="'+(ui.recSub==='cal'?'on':'')+'">饮食日历</button>'+
-    '<button type="button" data-act="rec-sub" data-v="nutrition" class="'+(ui.recSub==='nutrition'?'on':'')+'">营养覆盖</button>'+
     '<button type="button" data-act="rec-sub" data-v="places" class="'+(ui.recSub==='places'?'on':'')+'">好吃餐厅 <b>'+state.places.length+'</b></button>'+
   '</div>';
-  return seg + (ui.recSub==='places' ? placesHTML() : ui.recSub==='nutrition' ? nutritionHTML() : calendarHTML() + dayDetailHTML());
+  return seg + (ui.recSub==='places' ? placesHTML() : calendarHTML() + dayDetailHTML());
 }
-/* ================= 场景3：每周营养覆盖（v15） ================= */
-function weekKeys(anchor){
-  var a = anchor || todayKey();
-  var d = new Date(Number(a.slice(0,4)), Number(a.slice(5,7))-1, Number(a.slice(8,10)));
-  var wd = d.getDay(), diff = (wd===0 ? -6 : 1-wd); /* 以周一为一周起点 */
-  var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff);
-  var arr = [];
-  for(var i=0;i<7;i++){
-    var x = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+i);
-    arr.push(dateKey(x));
-  }
-  return arr;
-}
-function shiftWeek(anchor, delta){
-  var a = anchor || todayKey();
-  var d = new Date(Number(a.slice(0,4)), Number(a.slice(5,7))-1, Number(a.slice(8,10)) + delta*7);
-  return dateKey(d);
-}
-function weeklyCoverage(){
-  var keys = weekKeys(ui.nutriWeek);
-  var hits = {}, loggedDays = 0, dishCount = 0;
-  keys.forEach(function(k){
-    var day = state.log[k];
-    if(day && ((day.recipes||[]).length || (day.notes||[]).length)) loggedDays++;
-    ((day && day.recipes) || []).forEach(function(it){
-      dishCount++;
-      var r = recipeById(it.recipeId);
-      if(!r) return; /* 菜谱已删除的条目不计入 */
-      var h = ingredientsNutrients(mainIngredients(r));
-      Object.keys(h).forEach(function(key){ hits[key] = (hits[key]||[]).concat(h[key]); });
-    });
-  });
-  Object.keys(hits).forEach(function(key){
-    hits[key] = hits[key].filter(function(v,i,a){ return a.indexOf(v)===i; });
-  });
-  return { keys:keys, hits:hits, loggedDays:loggedDays, dishCount:dishCount };
-}
-function nutritionHTML(){
-  var cov = weeklyCoverage();
-  var first = cov.keys[0], last = cov.keys[6];
-  var isThis = first === weekKeys(todayKey())[0];
-  var head = '<div class="nutri-week">'+
-    '<button type="button" data-act="nutri-week" data-v="-1" aria-label="上一周">‹</button>'+
-    '<div class="nw-label"><b>'+fmtDay(first)+' — '+fmtDay(last)+'</b>'+
-      '<small>'+(isThis ? '本周' : (cov.loggedDays+' 天有记录 · '+cov.dishCount+' 道菜'))+'</small></div>'+
-    '<button type="button" data-act="nutri-week" data-v="1" aria-label="下一周">›</button>'+
-    (isThis ? '' : '<button type="button" class="nw-today" data-act="nutri-week" data-v="0">回到本周</button>')+
-  '</div>';
-  var covered = NUTRIENT_GROUPS.filter(function(g){ return (cov.hits[g.key]||[]).length; }).length;
-  var stats = '<div class="nutri-sum">这一周记录了 '+cov.dishCount+' 道菜 · 覆盖 '+covered+' / '+NUTRIENT_GROUPS.length+' 类营养</div>';
-  var tip = '<div class="hint">统计口径：只按「饮食日历」里这一周选过的菜谱主料做定性判断，不计算摄入量，也不代表营养是否充足；随手记不计入。</div>';
-  if(!cov.dishCount){
-    return head + '<div class="empty slim"><div class="big">🥗</div><p>这一周还没有记录菜谱<br>去「饮食日历」选几道菜，就能看到营养覆盖</p>'+
-      '<button type="button" data-act="rec-sub" data-v="cal">去饮食日历</button></div>' + tip;
-  }
-  var rows = NUTRIENT_GROUPS.map(function(g){
-    var got = cov.hits[g.key]||[];
-    return '<div class="nutri-row '+(got.length?'on':'')+'">'+
-      '<div class="nr-ico">'+g.emoji+'</div>'+
-      '<div class="nr-main"><b>'+g.label+'</b>'+
-        '<span>'+(got.length ? '来自 '+esc(got.slice(0,5).join('、')) : '本周没吃到 · 可试试 '+esc(g.tip))+'</span></div>'+
-      '<div class="nr-state">'+(got.length?'✓ 已覆盖':'— 未覆盖')+'</div>'+
-    '</div>';
-  }).join('');
-  return head + stats + '<div class="nutri-list">'+rows+'</div>' + tip;
-}
-
 /* ================= v16 营养知识页 ================= */
 /* ============ v21 调味料知识（手绘 SVG + 分类用途） ============
    手绘图标统一 viewBox 80x80，线条/描边由 CSS .spice-art 控制，自动适配深色。
@@ -2370,7 +2346,6 @@ function meHTML(){
       '<div class="factor-line">1 人份系数 <b id="factorVal">'+esc(fmt(f))+'</b><span>标准成人份的 '+Math.round(f*100)+'%</span></div>'+
       '<input type="range" id="f-factor" min="0.7" max="1.2" step="0.01" value="'+esc(f)+'">'+
       '<button type="button" class="btn" style="width:100%;margin-top:10px" data-act="factor-reset">按体型重算</button>'+
-      '<div class="hint">按 '+esc(p.height)+'cm / '+esc(p.weight)+'kg 估算日需约 '+Math.round(calcFactor(p.height,p.weight,30)*1900)+' kcal（年龄按 30 岁、轻活动估算），对照 1900 kcal 得出系数。主料按系数调整，调味料基本保持，可数食材取整到半份，避免味道变淡或出现 0.85 个番茄。这是份量换算参考，不是营养建议；滑块可按体感微调。</div>'+
     '</div></div>'+
     '<div class="section-title">云同步 · GitHub</div>'+
     '<div class="panel">'+
@@ -2384,7 +2359,6 @@ function meHTML(){
       '<div class="setting-row" data-act="cloud-setup"><div>连接 / 更换 GitHub<small>填 Token 自动建私有 Gist，其他设备填同一个 ID</small></div><span class="go">设置 ›</span></div>'+
       '<div class="setting-row" data-act="cloud-toggle-auto"><div>自动同步<small>改动后自动上传，打开时自动取最新</small></div><span class="go">'+(cloud.auto?'已开启 ›':'已关闭 ›')+'</span></div>'+
       '<div class="setting-row" data-act="cloud-share"><div>生成只读分享链接<small>发给朋友看，对方可一键存成自己的副本</small></div><span class="go">分享 ›</span></div>'+
-+
     '</div>'+
     '<div class="section-title">数据备份</div>'+
     '<div class="panel">'+
@@ -2392,6 +2366,8 @@ function meHTML(){
       '<div class="setting-row" data-act="import"><div>从文件恢复<small>导入之前导出的备份，会覆盖现有数据</small></div><span class="go">导入 ›</span></div>'+
       '<div class="setting-row" data-act="restore"><div>补回示例食谱<small>补进新增的示例菜，不改动你自己的菜</small></div><span class="go">恢复 ›</span></div>'+
     '</div>'+
+    '<div class="section-title">外观</div>'+
+    '<div class="panel"><div class="setting-row" data-act="theme-open"><div>换肤<small>挑一套配色，一键切换整个 App 的外观</small></div><span class="go">'+(themeById(theme.id)||THEMES[0]).emoji+' '+(themeById(theme.id)||THEMES[0]).name+' ›</span></div></div>'+
     '<div class="section-title">分类管理</div>'+
     '<div class="panel"><div class="setting-row" data-act="cat-manage"><div>编辑食材分类与制作方式<small>大类、细分、做法都能自己增减和改名</small></div><span class="go">管理 ›</span></div></div>'+
     '<div class="section-title">分类说明</div>'+
@@ -2400,6 +2376,75 @@ function meHTML(){
     '<div class="note">默认只保存在当前设备的浏览器里。开启上面的 GitHub 云同步后，数据会存进你自己的私有 Gist，所有设备读写同一份；分享链接是只读的，拿到的人改不了你的数据。清理浏览器数据会清掉本机记录和 Token，建议偶尔导出一份备份。</div>'+
     '<div class="section-title">危险操作</div>'+
     '<div class="panel"><div class="setting-row" data-act="wipe"><div style="color:var(--danger)">清空全部数据<small>食谱、清单和记录都会被删除</small></div><span class="go">清空 ›</span></div></div>';
+}
+
+/* 绘本主题滑块：已选叶绿色、未选浅蓝，按当前值绘制渐变填充 */
+function paintFactorSlider(){
+  var sl = document.getElementById('f-factor');
+  if(!sl) return;
+  var min = Number(sl.min||0), max = Number(sl.max||1), val = Number(sl.value);
+  var pct = max>min ? Math.max(0,Math.min(100,(val-min)/(max-min)*100)) : 0;
+  var on = theme.id==='night' ? '#91B87A' : '#91B87A';
+  var off = theme.id==='night' ? '#3D4A54' : '#D8F1FC';
+  sl.style.background = 'linear-gradient(90deg,'+on+' 0%,'+on+' '+pct+'%,'+off+' '+pct+'%,'+off+' 100%)';
+}
+/* 「+」入口菜单：新增食谱 / 导入单篇 / 批量导入 */
+function addMenuHTML(){
+  return '<div class="sheet-top">'+
+      '<button type="button" class="back" data-act="back" aria-label="返回">‹</button>'+
+      '<span class="t">添加食谱</span>'+
+    '</div><div class="sheet-body">'+
+      '<div class="add-menu">'+
+        '<button type="button" class="add-menu-item" data-act="add-new"><span class="ami-ico">✎</span><span class="ami-txt"><b>手动新增</b><small>自己填菜名、食材和做法</small></span><span class="ami-go">›</span></button>'+
+        '<button type="button" class="add-menu-item" data-act="add-import"><span class="ami-ico">🔗</span><span class="ami-txt"><b>导入单篇菜谱</b><small>小红书 / B站 分享文字</small></span><span class="ami-go">›</span></button>'+
+        '<button type="button" class="add-menu-item" data-act="add-batch"><span class="ami-ico">▦</span><span class="ami-txt"><b>批量导入</b><small>候选 JSON · 选题雷达</small></span><span class="ami-go">›</span></button>'+
+      '</div>'+
+    '</div>';
+}
+
+/* 清单交互反馈：新条目短暂高亮；删除先淡出收合再更新真实数据 */
+function flashListRow(id, name){
+  var rows = document.querySelectorAll('.check-row');
+  for(var i=0;i<rows.length;i++){
+    var row = rows[i];
+    var hit = row.querySelector('[data-id="'+id+'"]') ||
+              (name && row.querySelector('[data-v]') && row.innerText.indexOf(name)>-1 && row.querySelector('[data-v]').getAttribute('data-v').indexOf(name)===0);
+    if(hit){ row.classList.add('row-new'); setTimeout(function(r){ return function(){ r.classList.remove('row-new'); }; }(row),650); break; }
+  }
+}
+function removeRowAnimated(id, after, byV){
+  var rows = document.querySelectorAll('.check-row');
+  var target = null;
+  for(var i=0;i<rows.length;i++){
+    var q = byV ? ('[data-v="'+id+'"]') : ('[data-id="'+id+'"]');
+    if(rows[i].querySelector(q)){ target=rows[i]; break; }
+  }
+  if(target && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    target.classList.add('row-removing');
+    setTimeout(after, 200);
+  }else{ after(); }
+}
+function themeSheetHTML(){
+  var cards = THEMES.map(function(t){
+    var on = t.id===theme.id;
+    var v = t.vars;
+    var dots = '<span class="th-dot" style="background:'+v['--bg']+';border-color:'+v['--line']+'"></span>'+
+               '<span class="th-dot" style="background:'+v['--surface2']+';border-color:'+v['--line']+'"></span>'+
+               '<span class="th-dot" style="background:'+v['--brand']+';border-color:'+v['--line']+'"></span>'+
+               '<span class="th-dot" style="background:'+v['--ok']+';border-color:'+v['--line']+'"></span>';
+    return '<button type="button" class="theme-card'+(on?' on':'')+'" data-act="theme-apply" data-v="'+esc(t.id)+'">'+
+      '<span class="th-emoji">'+t.emoji+'</span>'+
+      '<span class="th-info"><b>'+esc(t.name)+'</b><small>'+esc(t.note)+'</small><span class="th-dots">'+dots+'</span></span>'+
+      '<span class="th-check">'+(on?'✓':'')+'</span></button>';
+  }).join('');
+  return '<div class="sheet-top">'+
+      '<button type="button" class="back" data-act="back" aria-label="返回">‹</button>'+
+      '<span class="t">换肤</span>'+
+    '</div><div class="sheet-body">'+
+      '<div class="hint" style="margin:12px 2px">选一套喜欢的配色，点一下立即生效，之后会记住你的选择。</div>'+
+      '<div class="theme-list">'+cards+'</div>'+
+      '<div class="hint" style="margin:18px 2px">想加更多皮肤？把新 UI 画面的配色发给我，我下次更新时加进来。</div>'+
+    '</div>';
 }
 
 function render(){
@@ -2419,6 +2464,7 @@ function render(){
                 ui.tab==='record' ? recordHTML() :
                 ui.tab==='knowledge' ? knowledgeHTML() : meHTML();
   if(ui.tab==='recipes') updateRecipeList();
+  if(ui.tab==='me') paintFactorSlider();
   var tbs = document.querySelectorAll('.tabbar button');
   for(var i=0;i<tbs.length;i++) tbs[i].classList.toggle('on', tbs[i].getAttribute('data-tab')===ui.tab);
   document.getElementById('fab').classList.toggle('hide', ui.tab!=='recipes');
@@ -3234,7 +3280,6 @@ document.addEventListener('click', function(e){
   }
   /* ---- v12 好吃餐厅 ---- */
   if(act==='rec-sub'){ ui.recSub = v; if(v==='places') ui.placeRandom={}; window.scrollTo(0,0); render(); return; }
-  if(act==='nutri-week'){ var nw=Number(v); ui.nutriWeek = nw===0 ? todayKey() : shiftWeek(ui.nutriWeek||todayKey(), nw); render(); return; }
   if(act==='kb-tab'){ ui.kbKey=v; render(); window.scrollTo(0,0); return; }
   if(act==='kb-view'){ ui.kbView=v; ui.spiceOpen=null; render(); window.scrollTo(0,0); return; }
   if(act==='spice-toggle'){ ui.spiceOpen = (ui.spiceOpen===v?null:v); render(); return; }
@@ -3286,7 +3331,16 @@ document.addEventListener('click', function(e){
   if(act==='pcfg-add'){ pcfgAdd(); return; }
   if(act==='pcfg-del'){ pcfgDel(Number(idx)); return; }
 
-  if(act==='add'){ openForm(null); return; }
+  if(act==='add'){ openSheet(addMenuHTML()); return; }
+  if(act==='add-new'){ openForm(null); return; }
+  if(act==='add-import'){
+    ui.imp={raw:'',url:'',platform:'',title:'',ings:'',steps:'',note:'',ai:'',images:[],parseInfo:null,batch:null,batchOnly:false};
+    openSheet(impSheetHTML()); return;
+  }
+  if(act==='add-batch'){
+    ui.imp={raw:'',url:'',platform:'',title:'',ings:'',steps:'',note:'',ai:'',images:[],parseInfo:null,batch:null,batchOnly:true};
+    openSheet(batchSheetHTML()); return;
+  }
   if(act==='import-open'){ ui.imp={raw:'',url:'',platform:'',title:'',ings:'',steps:'',note:'',ai:'',images:[],parseInfo:null,batch:null,batchOnly:false}; openSheet(impSheetHTML()); return; }
   if(act==='batch-open'){ ui.imp={raw:'',url:'',platform:'',title:'',ings:'',steps:'',note:'',ai:'',images:[],parseInfo:null,batch:null,batchOnly:true}; openSheet(batchSheetHTML()); return; }
   if(act==='batch-file'){
@@ -3432,7 +3486,8 @@ document.addEventListener('click', function(e){
   if(act==='factor-reset'){
     state.profile.factor = suggestFactor();
     var sl = document.getElementById('f-factor'); if(sl) sl.value = state.profile.factor;
-    var fv2 = document.getElementById('factorVal'); if(fv2) fv2.textContent = fmt(state.profile.factor);
+    var fv2 = document.getElementById('factorVal'); if(fv2){ fv2.textContent = fmt(state.profile.factor); fv2.classList.remove('val-pulse'); void fv2.offsetWidth; fv2.classList.add('val-pulse'); }
+    paintFactorSlider();
     save(); toast('已按体型重算为 '+fmt(state.profile.factor)); return;
   }
 
@@ -3444,23 +3499,30 @@ document.addEventListener('click', function(e){
     save(); render(); return;
   }
   if(act==='list-del-group'){
-    state.checklist = state.checklist.filter(function(x){ return itemKey(x)!==v; });
-    save(); render(); toast('已移除这一样'); return;
+    removeRowAnimated(v, function(){
+      state.checklist = state.checklist.filter(function(x){ return itemKey(x)!==v; });
+      save(); render(); toast('已移除这一样');
+    }, true);
+    return;
   }
   if(act==='list-add'){
     var inp = document.getElementById('newItem');
     var nv = (inp&&inp.value||'').trim();
     if(!nv){ toast('先写点什么'); return; }
-    state.checklist.push({id:uid(),name:nv,q:null,u:'',t:guessSeasoning(nv)?'se':'main',recipeId:'manual',recipeTitle:'手动添加',done:false});
-    save(); render(); toast('已加进清单'); return;
+    var newId = uid();
+    state.checklist.push({id:newId,name:nv,q:null,u:'',t:guessSeasoning(nv)?'se':'main',recipeId:'manual',recipeTitle:'手动添加',done:false});
+    save(); render(); flashListRow(newId, nv); toast('已加进清单'); return;
   }
   if(act==='list-toggle'){
     for(var a=0;a<state.checklist.length;a++) if(state.checklist[a].id===id){ state.checklist[a].done=!state.checklist[a].done; break; }
     save(); render(); return;
   }
   if(act==='list-del'){
-    state.checklist = state.checklist.filter(function(x){return x.id!==id;});
-    save(); render(); return;
+    removeRowAnimated(id, function(){
+      state.checklist = state.checklist.filter(function(x){return x.id!==id;});
+      save(); render();
+    });
+    return;
   }
   if(act==='clear-done'){
     state.checklist = state.checklist.filter(function(x){return !x.done;});
@@ -3469,6 +3531,15 @@ document.addEventListener('click', function(e){
   if(act==='clear-all'){
     if(confirm('清空整个购物清单？')){ state.checklist=[]; save(); render(); toast('清单已清空'); }
     return;
+  }
+  /* ---- v25 换肤 ---- */
+  if(act==='theme-open'){ openSheet(themeSheetHTML()); return; }
+  if(act==='theme-apply'){
+    var t = themeById(v);
+    if(!t){ return; }
+    theme.id = v; saveTheme(); applyTheme();
+    openSheet(themeSheetHTML()); render();
+    toast('已换成「'+t.name+'」'); return;
   }
   /* ---- v14 云同步 / 只读分享 ---- */
   if(act==='cloud-setup'){ openSheet(cloudSetupHTML()); return; }
@@ -3532,6 +3603,7 @@ document.addEventListener('input', function(e){
     state.profile.factor = Number(e.target.value);
     var lab = document.getElementById('factorVal');
     if(lab) lab.textContent = fmt(state.profile.factor);
+    paintFactorSlider();
     save();
   }
   else if(e.target.classList && e.target.classList.contains('n')){
